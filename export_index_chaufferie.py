@@ -65,10 +65,16 @@ def main():
         numero = nom.group(1) if nom else ''
         abonne = nom.group(2).replace('_', ' ') if nom else fichier.stem.replace('_', ' ')
         try:
-            try:
-                contenu = fichier.read_text(encoding='utf-8-sig')
-            except UnicodeDecodeError:
-                contenu = fichier.read_text(encoding='cp1252')
+            donnees = fichier.read_bytes()
+            if donnees.startswith((b'\xff\xfe', b'\xfe\xff')):
+                contenu = donnees.decode('utf-16')
+            elif donnees.startswith(b'\xef\xbb\xbf'):
+                contenu = donnees.decode('utf-8-sig')
+            else:
+                try:
+                    contenu = donnees.decode('utf-8')
+                except UnicodeDecodeError:
+                    contenu = donnees.decode('cp1252')
             lignes = [l for l in contenu.splitlines() if l.strip()]
             if not lignes:
                 raise ValueError('fichier vide')
