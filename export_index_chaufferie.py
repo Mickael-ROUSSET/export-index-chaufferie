@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Rassemble les index d'abonnés contenus dans des fichiers NN_Nom.txt."""
+import argparse
+import configparser
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+
+MOIS = {'janvier': 1, 'février': 2, 'fevrier': 2, 'mars': 3, 'avril': 4,
+        'mai': 5, 'juin': 6, 'juillet': 7, 'août': 8, 'aout': 8,
+        'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12, 'decembre': 12}
+DATE = re.compile(r'(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)?\s*(\d{1,2})\s+([a-zA-Zéûèêôîùà]+)\s+(\d{4})\s+(\d{2}):(\d{2}):(\d{2})', re.I)
+VALEUR = re.compile(r'^[+-]?[\d\s\u00a0]+(?:[,.]\d+)?$')
+
+def extraire(ligne):
+    morceaux = ligne.strip().split('\t')
+    if len(morceaux) != 2:
+        raise ValueError('format attendu : date<TAB>index')
+    match = DATE.fullmatch(morceaux[0].strip())
+    if not match:
+        raise ValueError('date française non reconnue')
+    j, mois, an, h, mi, s = match.groups()
+    mois_num = MOIS.get(mois.lower())
+    if mois_num is None:
+        raise ValueError('mois non reconnu : ' + mois)
+    date = datetime(int(an), mois_num, int(j), int(h), int(mi), int(s))
+    brut = morceaux[1].strip().replace('\u00a0', '').replace(' ', '')
+    if not VALEUR.fullmatch(brut):
+        raise ValueError('index non numérique : ' + brut)
+    return date, float(brut.replace(',', '.'))
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('repertoire', nargs='?', help='Répertoire des fichiers TXT')
+    p.add_argument('-o', '--sortie', help='Chemin du classeur Excel')
+    args = p.parse_args()
+    config = configparser.ConfigParser()
+    config.read(Path(__file__).resolve().parent / 'config.ini', encoding='utf-8')
+    repertoire = args.repertoire or config.get('export', 'repertoire', fallback='').strip()
+    if not repertoire:
+        p.error('Précisez un répertoire ou configurez config.ini')
+    dossier = Path(repertoire)
+    if not dossier.is_dir():
+        p.error('Répertoire introuvable : ' + str(dossier))
+    sortie_config = config.get('export', 'sortie', fallback='').strip()
+    sortie = Path(args.sortie or sortie_config) if (args.sortie or sortie_config) else dossier / 'Index_abonnes.xlsx'
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Index abonnés'
+    ws.append(['N°', 'Abonné', 'Date du relevé', 'Index', 'Fichier source'])
+    erreurs = []
+    for fichier in sorted(dossier.glob('*.txt'), key=lambda f: f.name.lower()):
+        nom = re.fullmatch(r'(\d+)[_\-](.+)', fichier.stem)
+        if not nom:
+            erreurs.append((fichier.name, 'Nom attendu : NN_Nom.txt'))
+            continue
+        try:
+            try:
+                contenu = fichier.read_text(encoding='utf-8-sig')
+            except UnicodeDecodeError:
+                contenu = fichier.read_text(encoding='cp1252')
+            lignes = [l for l in contenu.splitlines() if l.strip()]
+            if not lignes:
+                raise ValueError('fichier vide')
+            date, index = extraire(lignes[-1])
+            ws.append([nom.group(1), nom.group(2).replace('_', ' '), date, index, fichier.name])
+        except (ValueError, OSError) as exc:
+            erreurs.append((fichier.name, str(exc)))
+    for ligne in ws.iter_rows(min_row=2):
+        ligne[2].number_format = 'DD/MM/YYYY HH:MM:SS'
+        ligne[3].number_format = '#,##0.0000'
+    ws.freeze_panes = 'A2'
+    ws.auto_filter.ref = ws.dimensions
+    for cellule in ws[1]:
+        cellule.fill = PatternFill('solid', fgColor='17365D')
+        cellule.font = Font(color='FFFFFF', bold=True)
+    for col, largeur in {'A': 10, 'B': 30, 'C': 24, 'D': 22, 'E': 35}.items():
+        ws.column_dimensions[col].width = largeur
+    if erreurs:
+        we = wb.create_sheet('Erreurs')
+        we.append(['Fichier', 'Erreur'])
+        for erreur in erreurs:
+            we.append(erreur)
+        we.column_dimensions['A'].width = 40
+        we.column_dimensions['B'].width = 65
+        for c in we[1]:
+            c.font = Font(bold=True, color='FFFFFF')
+            c.fill = PatternFill('solid', fgColor='9C3030')
+    sortie.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(sortie)
+    print(f'{ws.max_row - 1} abonnés exportés ; {len(erreurs)} fichier(s) en erreur.')
+    print('Excel :', sortie)
+    for fichier, erreur in erreurs:
+        print(f'ATTENTION {fichier} : {erreur}', file=sys.stderr)
+
+if __name__ == '__main__':
+    main()
