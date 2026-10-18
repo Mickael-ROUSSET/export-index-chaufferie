@@ -72,7 +72,15 @@ def main():
             lignes = [l for l in contenu.splitlines() if l.strip()]
             if not lignes:
                 raise ValueError('fichier vide')
-            date, index = extraire(lignes[-1])
+            # Ignorer les en-têtes Trend et les lignes parasites.
+            # Retenir le dernier relevé valide, sans confondre avec l'identifiant du point.
+            releves = []
+            for ligne_texte in lignes:
+                if DATE.match(ligne_texte.strip().lstrip("\ufeff")):
+                    releves.append(extraire(ligne_texte))
+            if not releves:
+                raise ValueError("aucune ligne de relevé datée reconnue")
+            date, index = releves[-1]
             ws.append([nom.group(1), nom.group(2).replace('_', ' '), date, index, fichier.name])
         except (ValueError, OSError) as exc:
             erreurs.append((fichier.name, str(exc)))
