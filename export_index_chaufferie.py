@@ -61,9 +61,9 @@ def main():
     erreurs = []
     for fichier in sorted(dossier.glob('*.txt'), key=lambda f: f.name.lower()):
         nom = re.fullmatch(r'(\d+)[_\-](.+)', fichier.stem)
-        if not nom:
-            erreurs.append((fichier.name, 'Nom attendu : NN_Nom.txt'))
-            continue
+        # Le préfixe numérique est facultatif : accepter aussi Nom.txt.
+        numero = nom.group(1) if nom else ''
+        abonne = nom.group(2).replace('_', ' ') if nom else fichier.stem.replace('_', ' ')
         try:
             try:
                 contenu = fichier.read_text(encoding='utf-8-sig')
@@ -81,7 +81,7 @@ def main():
             if not releves:
                 raise ValueError("aucune ligne de relevé datée reconnue")
             date, index = releves[-1]
-            ws.append([nom.group(1), nom.group(2).replace('_', ' '), date, index, fichier.name])
+            ws.append([numero, abonne, date, index, fichier.name])
         except (ValueError, OSError) as exc:
             erreurs.append((fichier.name, str(exc)))
     for ligne in ws.iter_rows(min_row=2):
