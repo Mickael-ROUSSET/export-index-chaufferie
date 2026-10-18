@@ -60,7 +60,7 @@ def main():
     ws.append(['N°', 'Abonné', 'Date du relevé', 'Index', 'Fichier source'])
     erreurs = []
     for fichier in sorted(dossier.glob('*.txt'), key=lambda f: f.name.lower()):
-        nom = re.fullmatch(r'(\d+)[_\-](.+)', fichier.stem)
+        nom = re.fullmatch(r'((?:\d+|[Ee]\d+))[_\-](.+)', fichier.stem)
         # Le préfixe numérique est facultatif : accepter aussi Nom.txt.
         numero = nom.group(1) if nom else ''
         abonne = nom.group(2).replace('_', ' ') if nom else fichier.stem.replace('_', ' ')
