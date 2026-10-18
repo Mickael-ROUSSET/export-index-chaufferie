@@ -16,21 +16,28 @@ DATE = re.compile(r'(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)?\s*(
 VALEUR = re.compile(r'^[+-]?[\d\s\u00a0]+(?:[,.]\d+)?$')
 
 def extraire(ligne):
-    morceaux = ligne.strip().split('\t')
-    if len(morceaux) != 2:
-        raise ValueError('format attendu : date<TAB>index')
-    match = DATE.fullmatch(morceaux[0].strip())
+    # La date occupe le début de ligne ; le séparateur peut être une
+    # tabulation, plusieurs espaces, un point-virgule ou une virgule.
+    ligne = ligne.strip().lstrip("\ufeff")
+    match = DATE.match(ligne)
     if not match:
-        raise ValueError('date française non reconnue')
+        raise ValueError("date française non reconnue : " + repr(ligne[:100]))
     j, mois, an, h, mi, s = match.groups()
     mois_num = MOIS.get(mois.lower())
     if mois_num is None:
-        raise ValueError('mois non reconnu : ' + mois)
+        raise ValueError("mois non reconnu : " + mois)
     date = datetime(int(an), mois_num, int(j), int(h), int(mi), int(s))
-    brut = morceaux[1].strip().replace('\u00a0', '').replace(' ', '')
-    if not VALEUR.fullmatch(brut):
-        raise ValueError('index non numérique : ' + brut)
-    return date, float(brut.replace(',', '.'))
+    reste = ligne[match.end():]
+    # Séparateurs permis : tabulation, espaces, point-virgule.
+    # Une virgule peut aussi séparer les champs, mais reste utilisée
+    # comme séparateur décimal dans la valeur.
+    reste = reste.lstrip(" \t;")
+    if reste.startswith(","):
+        reste = reste[1:].lstrip()
+    brut = reste.strip().replace("\u00a0", "").replace("\u202f", "").replace(" ", "")
+    if not re.fullmatch(r"[+-]?\d+(?:[,.]\d+)?", brut):
+        raise ValueError("index non numérique ou séparateur non reconnu : " + repr(reste[:100]))
+    return date, float(brut.replace(",", "."))
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
